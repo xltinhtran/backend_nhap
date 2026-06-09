@@ -18,6 +18,8 @@ namespace QuizletCloneAPI.Models // Sửa namespace đúng với project của �
         public virtual User User { get; set; }
     }
 
+
+
     public class ActivityLogDto
     {
         public int UserId { get; set; }
