@@ -8,12 +8,12 @@ namespace BackendQuizletclone.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class StudySetsController : ControllerBase
+    public class ActivityLogsContronller : ControllerBase
     {
         private readonly QuizletCloneDbContext _context;
 
         // Bơm DbContext vào đây để xài
-        public StudySetsController(QuizletCloneDbContext context)
+        public ActivityLogsContronller(QuizletCloneDbContext context)
         {
             _context = context;
         }

@@ -1,139 +1,47 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using BackendQuizletclone.Data;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using BackendQuizletclone.Data; // Gọi namespace chứa DbContext và Models của ông
-using System.Linq;
-using System.Threading.Tasks;
+using System;
+// Nhớ using Models và Data Context của ông nha
 
-namespace BackendQuizletclone.Controllers
+namespace BackendQuizletClone.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class StudySetsController : ControllerBase
+    public class UsersController : ControllerBase
     {
-        private readonly QuizletCloneDbContext _context;
+        private readonly QuizletCloneDbContext _context; // Đổi thành tên DbContext của ông
 
-        // Bơm DbContext vào đây để xài
-        public StudySetsController(QuizletCloneDbContext context)
+        public UsersController(QuizletCloneDbContext context)
         {
             _context = context;
         }
 
-        // 1. API Lấy toàn bộ danh sách bộ từ vựng (ĐÃ NÂNG CẤP ĐỂ BIẾT TỪ NÀO ĐÃ HỌC + ĐẾM SỐ NGƯỜI HỌC)
-        // Cách gọi: GET /api/StudySets?userId=1
+        // 1. API Lấy danh sách tất cả tài khoản
         [HttpGet]
-        public async Task<IActionResult> GetAllStudySets([FromQuery] int userId = 0)
+        public async Task<IActionResult> GetAllUsers()
         {
-            var studySets = await _context.StudySets
-                .Select(set => new
-                {
-                    id = set.Id,
-                    title = set.Title,
-                    description = set.Description,
-                    createdAt = set.CreatedAt,
-
-                    // 🔥 BỔ SUNG: ĐẾM SỐ NGƯỜI HỌC DUY NHẤT TRONG BỘ THẺ NÀY
-                    learnerCount = _context.StudyProgresses
-                        .Where(p => p.Flashcard.StudySetId == set.Id)
-                        .Select(p => p.UserId)
-                        .Distinct()
-                        .Count(),
-
-                    // Quét từng thẻ trong bộ này và ghép điểm của User vào
-                    flashcards = set.Flashcards.Select(card => new
-                    {
-                        id = card.Id,
-                        term = card.Term,
-                        definition = card.Definition,
-                        example = card.Example,
-                        imageUrl = card.ImageUrl,
-
-                        isStarred = _context.StudyProgresses
-                                      .Where(p => p.FlashcardId == card.Id && p.UserId == userId)
-                                      .Select(p => p.IsStarred)
-                                      .FirstOrDefault(),
-
-                        // Móc sổ điểm (StudyProgresses) của riêng User này ra
-                        repetitions = _context.StudyProgresses
-                            .Where(p => p.FlashcardId == card.Id && p.UserId == userId)
-                            .Select(p => (int?)p.Repetitions)
-                            .FirstOrDefault() ?? 0,
-
-                        interval = _context.StudyProgresses
-                            .Where(p => p.FlashcardId == card.Id && p.UserId == userId)
-                            .Select(p => (int?)p.Interval)
-                            .FirstOrDefault() ?? 1,
-
-                        easeFactor = _context.StudyProgresses
-                            .Where(p => p.FlashcardId == card.Id && p.UserId == userId)
-                            .Select(p => (double?)p.EaseFactor)
-                            .FirstOrDefault() ?? 2.5,
-
-                        nextReviewDate = _context.StudyProgresses
-                            .Where(p => p.FlashcardId == card.Id && p.UserId == userId)
-                            .Select(p => (System.DateTime?)p.NextReviewDate)
-                            .FirstOrDefault()
-                    }).ToList()
-                })
+            var users = await _context.Users
+                .Select(u => new { u.Id, u.Username, u.Email, u.Role })
                 .ToListAsync();
-
-            return Ok(studySets);
-        }
-        // 2. API Tạo một bộ từ vựng mới
-        // Khi gọi POST /api/StudySets, nó sẽ chạy vào đây
-        [HttpPost]
-        public async Task<IActionResult> CreateStudySet(StudySet newSet)
-        {
-            // Nhét dữ liệu mới vào CSDL
-            _context.StudySets.Add(newSet);
-            await _context.SaveChangesAsync(); // Lưu lại (Commit)
-
-            return Ok(new { message = "Đã tạo bộ từ vựng thành công!", data = newSet });
+            return Ok(users);
         }
 
-        // 3. Xóa TOÀN BỘ một bộ thẻ (Dành cho nút thùng rác bự)
-        // Cách gọi: DELETE /api/StudySets/{id}
+        // 2. API Xóa tài khoản
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteStudySet(int id)
+        public async Task<IActionResult> DeleteUser(int id)
         {
-            var studySet = await _context.StudySets.FindAsync(id);
-            if (studySet == null)
-            {
-                return NotFound(new { message = "Không tìm thấy bộ thẻ!" });
-            }
+            var user = await _context.Users.FindAsync(id);
+            if (user == null) return NotFound(new { message = "Không tìm thấy user!" });
 
-            _context.StudySets.Remove(studySet);
+            // Xóa luôn mấy cái tiến độ học của nó cho sạch Database
+            var progresses = _context.StudyProgresses.Where(p => p.UserId == id);
+            _context.StudyProgresses.RemoveRange(progresses);
+
+            _context.Users.Remove(user);
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = "Đã xóa sạch bộ thẻ và các từ vựng bên trong!" });
+            return Ok(new { message = "Xóa tài khoản thành công!" });
         }
-
-        // 4. API tính % cho màn hình Dashboard
-        // Cách gọi: GET /api/StudySets/dashboard/1
-        [HttpGet("dashboard/{userId}")]
-        public async Task<IActionResult> GetDashboardProgress(int userId)
-        {
-            var dashboardData = await _context.StudySets
-                .Select(s => new
-                {
-                    s.Id,
-                    s.Title,
-                    TotalCards = s.Flashcards.Count,
-                    // Đếm những thẻ ĐÃ CÓ trong bảng StudyProgresses của User này
-                    LearnedCards = _context.StudyProgresses.Count(p => p.Flashcard.StudySetId == s.Id && p.UserId == userId)
-                })
-                .Select(s => new
-                {
-                    s.Id,
-                    s.Title,
-                    s.TotalCards,
-                    s.LearnedCards,
-                    // Toán học lớp 3: Tính phần trăm
-                    ProgressPercent = s.TotalCards > 0 ? (s.LearnedCards * 100 / s.TotalCards) : 0
-                })
-                .ToListAsync();
-
-            return Ok(dashboardData);
-        }
-
     }
 }
